@@ -123,15 +123,26 @@ func (v *VRGInstance) kubeObjectsRecover(objectStore ObjectStorer) error {
 	}
 
 	if v.instance.Status.KubeObjectProtection.LastProtectedCapture == nil {
-		// TODO attempt to populate status from s3 store
-		if found := false; !found {
-			v.log.Info("Kube objects capture not found")
-			v.instance.Status.KubeObjectProtection.LastProtectedCapture = &ramen.KubeObjectCaptureStatus{
-				Number: -1,
-			}
+		notFound := func() error {
+			v.instance.Status.KubeObjectProtection.LastProtectedCapture = &ramen.KubeObjectCaptureStatus{Number: -1}
 
 			return nil
 		}
+
+		var vrg ramen.VolumeReplicationGroup
+		if err := downloadTypedObject(objectStore, s3ObjectNamePrefix(*v.instance), vrgS3ObjectNameSuffix, &vrg); err != nil {
+			v.log.Error(err, "protected last protected Kube object capture status get")
+
+			return notFound()
+		}
+
+		if vrg.Status.KubeObjectProtection.LastProtectedCapture == nil {
+			v.log.Info("Protected last protected Kube object capture status nil")
+
+			return notFound()
+		}
+
+		v.instance.Status.KubeObjectProtection.LastProtectedCapture = vrg.Status.KubeObjectProtection.LastProtectedCapture
 	}
 
 	return kubeObjectsRecover(
